@@ -1,63 +1,68 @@
 from env import ENVIRONMENT
 from Brain import DQN
-import numpy as np
 import time
-import random
+import numpy as np
 
-def main(max_iter):
-    start = time.time() # record time
-    agent_reward_list = [] # record agent reward
-    TDMA_reward_list = []
-    reward_list = [] # record total reward
-    agent_state_list = []
-    agent_action_list = []
+
+def _build_next_state(i, observation, state_hist, action_hist, delayed_idx):
+    if i < env.DRL_delay * 2 - 1:
+        return env.reset(), delayed_idx
+    next_state = np.concatenate(
+        [state_hist[delayed_idx][2:], [action_hist[delayed_idx], observation]]
+    )
+    return next_state, delayed_idx + 1
+
+
+def _run_train_loop(max_iter, learn_after=200):
     state = env.reset()
-    counter2 = 0
-    a = 0
+    state_hist = []
+    action_hist = []
+    delayed_idx = 0
+
+    agent_rewards = []
+    tdma_rewards = []
 
     for i in range(max_iter):
-        agent_action = dqn_agent.choose_action(state)
-        observation_, reward, agent_reward, TDMA_reward = env.step(agent_action)
-
-        if i < env.DRL_delay * 2 - 1:
-            next_state = env.reset()
-        else:
-            next_state = np.concatenate([agent_state_list[counter2][2:], [agent_action_list[counter2], observation_]])
-            counter2 += 1
+        action = dqn_agent.choose_action(state)
+        observation, reward, agent_reward, tdma_reward = env.step(action)
+        next_state, delayed_idx = _build_next_state(
+            i, observation, state_hist, action_hist, delayed_idx
+        )
 
         if i >= env.DRL_delay * 2 - 1:
-            dqn_agent.store_transition(state, agent_action, reward, next_state)
-
-        agent_state_list.append(state)
-        agent_action_list.append(agent_action)
-
-        agent_reward_list.append(agent_reward) # store agent reward
-        TDMA_reward_list.append(TDMA_reward) # store TDMA reward
-        reward_list.append(reward) # store total reward
-
-        # --------------------------------------------------------------------------------------------------------------
-        # We omit the adaptive training mechanism here.
-        # --------------------------------------------------------------------------------------------------------------
-
-        if i > 200 and a == 0:
+            dqn_agent.store_transition(state, action, reward, next_state)
+        if i > learn_after:
             dqn_agent.learn()
 
+        state_hist.append(state)
+        action_hist.append(action)
+        agent_rewards.append(agent_reward)
+        tdma_rewards.append(tdma_reward)
         state = next_state
 
-        print(i)
+        if i % 1000 == 0:
+            print("iter:", i)
 
-    with open('rewards/agent_len5e4_M40.txt', 'w') as my_agent:
-        for i in agent_reward_list:
-            my_agent.write(str(i) + '   ')
-    with open('rewards/TDMA_len5e4_M40.txt', 'w') as my_TDMA:
-        for i in TDMA_reward_list:
-            my_TDMA.write(str(i) + '   ')
+    return agent_rewards, tdma_rewards
 
-    print('-----------------------------') # Calculate the average of the last 2000 time slots
-    print('average agent reward: {}'.format(np.mean(agent_reward_list[-2000:])))
-    print('average TDMA reward:  {}'.format(np.mean(TDMA_reward_list[-2000:])))
-    print('average total reward: {}'.format(np.mean(agent_reward_list[-2000:]) + np.mean(TDMA_reward_list[-2000:])))
-    print('Time elapsed:', time.time() - start) # Print computer run time
+
+def main(max_iter):
+    start = time.time()
+    agent_rewards, tdma_rewards = _run_train_loop(max_iter=max_iter)
+
+    with open("rewards/agent_len5e4_M40.txt", "w") as f:
+        f.write(" ".join(map(str, agent_rewards)))
+    with open("rewards/TDMA_len5e4_M40.txt", "w") as f:
+        f.write(" ".join(map(str, tdma_rewards)))
+
+    tail = 2000 if len(agent_rewards) >= 2000 else len(agent_rewards)
+    agent_avg = float(np.mean(agent_rewards[-tail:]))
+    tdma_avg = float(np.mean(tdma_rewards[-tail:]))
+    print("-----------------------------")
+    print("average agent reward:", agent_avg)
+    print("average TDMA reward:", tdma_avg)
+    print("average total reward:", agent_avg + tdma_avg)
+    print("Time elapsed:", time.time() - start)
 
 
 if __name__ == "__main__":

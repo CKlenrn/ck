@@ -1,73 +1,70 @@
 from env_aloha import ENVIRONMENT_ALOHA
 from Brain import DQN
-import numpy as np
 import time
+import numpy as np
 import os
 
-def main(max_iter, reward_dir="rewards"):
-    start = time.time()
 
-    os.makedirs(reward_dir, exist_ok=True)
+def _build_next_state(i, observation, state_hist, action_hist, delayed_idx):
+    if i < env.DRL_delay * 2 - 1:
+        return env.reset(), delayed_idx
+    next_state = np.concatenate(
+        [state_hist[delayed_idx][2:], [action_hist[delayed_idx], observation]]
+    )
+    return next_state, delayed_idx + 1
 
-    agent_reward_list = []
-    aloha_reward_list = []
-    reward_list = []
-    agent_state_list = []
-    agent_action_list = []
 
+def _run_train_loop(max_iter, learn_after=200):
     state = env.reset()
-    counter2 = 0
-    learn_started = False
+    state_hist = []
+    action_hist = []
+    delayed_idx = 0
+
+    agent_rewards = []
+    aloha_rewards = []
 
     for i in range(max_iter):
-        agent_action = dqn_agent.choose_action(state)
-        observation_, reward, agent_reward, aloha_reward = env.step(agent_action)
-
-        # build next_state with delayed observation, consistent with your original Run.py
-        if i < env.DRL_delay * 2 - 1:
-            next_state = env.reset()
-        else:
-            # state: shift window, append [previous_action, delayed_observation]
-            next_state = np.concatenate([agent_state_list[counter2][2:], [agent_action_list[counter2], observation_]])
-            counter2 += 1
+        action = dqn_agent.choose_action(state)
+        observation, reward, agent_reward, aloha_reward = env.step(action)
+        next_state, delayed_idx = _build_next_state(
+            i, observation, state_hist, action_hist, delayed_idx
+        )
 
         if i >= env.DRL_delay * 2 - 1:
-            dqn_agent.store_transition(state, agent_action, reward, next_state)
-
-        agent_state_list.append(state)
-        agent_action_list.append(agent_action)
-
-        agent_reward_list.append(agent_reward)
-        aloha_reward_list.append(aloha_reward)
-        reward_list.append(reward)
-
-        # training (same pattern as your original code)
-        if i > 200:
+            dqn_agent.store_transition(state, action, reward, next_state)
+        if i > learn_after:
             dqn_agent.learn()
-            learn_started = True
 
+        state_hist.append(state)
+        action_hist.append(action)
+        agent_rewards.append(agent_reward)
+        aloha_rewards.append(aloha_reward)
         state = next_state
 
         if i % 1000 == 0:
             print("iter:", i)
 
-    # save rewards
-    agent_file = os.path.join(reward_dir, "agent_aloha.txt")
-    aloha_file = os.path.join(reward_dir, "aloha.txt")
-    with open(agent_file, "w") as f:
-        f.write(" ".join(map(str, agent_reward_list)))
-    with open(aloha_file, "w") as f:
-        f.write(" ".join(map(str, aloha_reward_list)))
+    return agent_rewards, aloha_rewards
 
-    # summary (last 2000 slots)
-    tail = 2000 if len(agent_reward_list) >= 2000 else len(agent_reward_list)
-    print('-----------------------------')
-    print('average agent reward: {}'.format(np.mean(agent_reward_list[-tail:])))
-    print('average aloha reward: {}'.format(np.mean(aloha_reward_list[-tail:])))
-    print('average total reward: {}'.format(np.mean(agent_reward_list[-tail:]) + np.mean(aloha_reward_list[-tail:])))
-    print('Time elapsed:', time.time() - start)
-    if not learn_started:
-        print("Warning: training never started (max_iter too small).")
+
+def main(max_iter, reward_dir="rewards"):
+    start = time.time()
+    os.makedirs(reward_dir, exist_ok=True)
+    agent_rewards, aloha_rewards = _run_train_loop(max_iter=max_iter)
+
+    with open(f"{reward_dir}/agent_aloha.txt", "w") as f:
+        f.write(" ".join(map(str, agent_rewards)))
+    with open(f"{reward_dir}/aloha.txt", "w") as f:
+        f.write(" ".join(map(str, aloha_rewards)))
+
+    tail = 2000 if len(agent_rewards) >= 2000 else len(agent_rewards)
+    agent_avg = float(np.mean(agent_rewards[-tail:]))
+    aloha_avg = float(np.mean(aloha_rewards[-tail:]))
+    print("-----------------------------")
+    print("average agent reward:", agent_avg)
+    print("average aloha reward:", aloha_avg)
+    print("average total reward:", agent_avg + aloha_avg)
+    print("Time elapsed:", time.time() - start)
 
 if __name__ == "__main__":
     # Example parameters you can tune:
