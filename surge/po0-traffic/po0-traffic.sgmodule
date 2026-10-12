@@ -1,0 +1,11 @@
+#!name=Po0GZ Traffic
+#!desc=Po0 腾讯云广州 - Spring Special 流量面板
+#!system=ios
+#!arguments=email,password,service_id:4040
+#!arguments-desc=填写 Po0 控制台邮箱和密码；service_id 默认 4040。
+
+[Panel]
+Po0GZ = title="Po0GZ 流量",content="启用模块后点刷新读取",style=info,script-name=po0_traffic,update-interval=300
+
+[Script]
+po0_traffic = type=generic,script-path=https://raw.githubusercontent.com/CKlenrn/ck/main/surge/po0-traffic/po0-traffic.js,argument="email={{{email}}}&password={{{password}}}&service_id={{{service_id}}}"
