@@ -2,6 +2,7 @@
 
 var LOGIN_URL = 'https://console.po0.io/login';
 var API_URL = 'https://console.po0.io/modules/servers/penguin/api/productInfo.php';
+var BROWSER_USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1';
 var UNITS = ['KB', 'MB', 'GB', 'TB', 'PB'];
 
 function decodeArgument(value) {
@@ -137,7 +138,12 @@ function requestUsage(config, finish) {
     url: API_URL + '?serviceId=' + encodeURIComponent(config.serviceId),
     timeout: 10,
     'auto-cookie': true,
-    headers: { Accept: 'application/json' },
+    headers: {
+      Accept: 'application/json',
+      Referer: 'https://console.po0.io/clientarea.php?action=productdetails&id=' + encodeURIComponent(config.serviceId),
+      'User-Agent': BROWSER_USER_AGENT,
+      'X-Requested-With': 'XMLHttpRequest',
+    },
   }, function (error, response, body) {
     if (error || !response || response.status < 200 || response.status >= 400) {
       finish(panelError('登录或接口失败'));
@@ -156,7 +162,10 @@ function run(config, finish) {
     url: LOGIN_URL,
     timeout: 10,
     'auto-cookie': true,
-    headers: { Accept: 'text/html' },
+    headers: {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'User-Agent': BROWSER_USER_AGENT,
+    },
   }, function (error, response, body) {
     if (error || !response || response.status < 200 || response.status >= 400) {
       finish(panelError('登录或接口失败'));
@@ -174,16 +183,23 @@ function run(config, finish) {
       timeout: 10,
       'auto-cookie': true,
       headers: {
-        Accept: 'text/html',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Content-Type': 'application/x-www-form-urlencoded',
+        Origin: 'https://console.po0.io',
+        Referer: LOGIN_URL,
+        'User-Agent': BROWSER_USER_AGENT,
       },
       body: [
         'token=' + formEncode(token),
         'username=' + formEncode(config.email),
         'password=' + formEncode(config.password),
       ].join('&'),
-    }, function (postError, postResponse) {
+    }, function (postError, postResponse, postBody) {
       if (postError || !postResponse || postResponse.status < 200 || postResponse.status >= 400) {
+        finish(panelError('登录或接口失败'));
+        return;
+      }
+      if (/class=["'][^"']*login-form|name=["']password["']/i.test(String(postBody || ''))) {
         finish(panelError('登录或接口失败'));
         return;
       }
